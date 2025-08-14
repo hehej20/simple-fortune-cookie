@@ -2,12 +2,10 @@ version: "3.9"
 
 services:
   backend:
-    build:
-      context: ./backend
+    image: hehej/sfc-backend:latest
 
   frontend:
-    build:
-      context: ./frontend
+    image: hehej/sfc-frontend:latest
     environment:
       - BACKEND_DNS=backend
       - BACKEND_PORT=9000
@@ -15,3 +13,4 @@ services:
       - "8080:8080"
     depends_on:
       - backend
+    pull_policy: always
