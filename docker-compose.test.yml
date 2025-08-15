@@ -1,0 +1,23 @@
+version: "3.8"
+services:
+  backend:
+    build:
+      context: ./backend
+    image: simple-fortune-cookie/backend:test
+    environment:
+      - PORT=9000
+    ports:
+      - "9000:9000"
+
+  frontend:
+    build:
+      context: ./frontend
+    image: simple-fortune-cookie/frontend:test
+    environment:
+      - BACKEND_DNS=backend
+      - BACKEND_PORT=9000
+      - PORT=8080
+    ports:
+      - "3000:8080"
+    depends_on:
+      - backend
