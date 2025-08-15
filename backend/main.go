@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"regexp"
 	"sync"
+	"github.com/gomodule/redigo/redis"
+	"os"
 )
 
 var (
@@ -14,6 +16,9 @@ var (
 	getFortuneRe    = regexp.MustCompile(`^/fortunes[/](\d+)$`)
 	randomFortuneRe = regexp.MustCompile(`^/fortunes[/]random$`)
 	createFortuneRe = regexp.MustCompile(`^/fortunes[/]*$`)
+
+	usingRedis = false
+	dbLink     redis.Conn
 )
 
 type fortune struct {
@@ -35,6 +40,23 @@ var datastoreDefault = datastore{m: map[string]fortune{
 
 type fortuneHandler struct {
 	store *datastore
+}
+
+func loadFromRedis(store *datastore) {
+	if !usingRedis {
+		return
+	}
+	keys, err := redis.Strings(dbLink.Do("hkeys", "fortunes"))
+	if err != nil {
+		fmt.Println("redis hkeys failed", err)
+		return
+	}
+	for _, key := range keys {
+		msg, err := redis.String(dbLink.Do("hget", "fortunes", key))
+		if err != nil {
+			store.m[key] = fortune{ID: key, Message: msg}
+		}
+	}
 }
 
 func (h *fortuneHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -170,13 +192,25 @@ func notFound(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	mux := http.NewServeMux()
-	fortuneH := &fortuneHandler{
-		store: &datastoreDefault,
-	}
-	mux.Handle("/fortunes", fortuneH)
-	mux.Handle("/fortunes/", fortuneH)
+    redisURL := os.Getenv("REDIS_URL")
+    if redisURL != "" {
+        conn, err := redis.DialURL(redisURL)
+        if err != nil {
+            fmt.Println("failed to connect to Redis:", err)
+        } else {
+            usingRedis = true
+            dbLink = conn
+            fmt.Println("Connected to Redis")
+        }
 
-	err := http.ListenAndServe(":9000", mux)
-    fmt.Println("%v", err)
+    mux := http.NewServeMux()
+    fortuneH := &fortuneHandler{
+        store: &datastoreDefault,
+    }
+    mux.Handle("/fortunes", fortuneH)
+    mux.Handle("/fortunes/", fortuneH)
+
+    err = http.ListenAndServe(":9001", mux)
+    fmt.Println(err)
+}
 }
