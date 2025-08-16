@@ -12,6 +12,8 @@ function get(endpoint) {
         if (this.status == 200) {
             document.getElementById("output").innerHTML =
             this.responseText;
+        } else{
+            backendDown();
         }
     };
     xhttp.open("GET", endpoint, true);
@@ -45,3 +47,7 @@ function addCookie(e) {
     }
     return false;
 }
+
+function backendDown() {
+    show("Backend unavailable. Please try again later");
+  }

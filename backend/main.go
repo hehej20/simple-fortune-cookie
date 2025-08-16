@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"math/rand"
 	"net/http"
+	"os"
 	"regexp"
 	"sync"
+
 	"github.com/gomodule/redigo/redis"
-	"os"
 )
 
 var (
@@ -16,9 +17,6 @@ var (
 	getFortuneRe    = regexp.MustCompile(`^/fortunes[/](\d+)$`)
 	randomFortuneRe = regexp.MustCompile(`^/fortunes[/]random$`)
 	createFortuneRe = regexp.MustCompile(`^/fortunes[/]*$`)
-
-	usingRedis = false
-	dbLink     redis.Conn
 )
 
 type fortune struct {
@@ -192,25 +190,37 @@ func notFound(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-    redisURL := os.Getenv("REDIS_URL")
-    if redisURL != "" {
-        conn, err := redis.DialURL(redisURL)
-        if err != nil {
-            fmt.Println("failed to connect to Redis:", err)
-        } else {
-            usingRedis = true
-            dbLink = conn
-            fmt.Println("Connected to Redis")
-        }
+	redisURL := os.Getenv("REDIS_URL")
+	if redisURL != "" {
+		conn, err := redis.DialURL(redisURL)
+		if err != nil {
+			fmt.Println("failed to connect to Redis:", err)
+		} else {
+			usingRedis = true
+			dbLink = conn
+			fmt.Println("Connected to Redis")
+		}
+	}
 
-    mux := http.NewServeMux()
-    fortuneH := &fortuneHandler{
-        store: &datastoreDefault,
-    }
-    mux.Handle("/fortunes", fortuneH)
-    mux.Handle("/fortunes/", fortuneH)
+	mux := http.NewServeMux()
+	fortuneH := &fortuneHandler{
+		store: &datastoreDefault,
+	}
 
-    err = http.ListenAndServe(":9001", mux)
-    fmt.Println(err)
+	mux.Handle("/fortunes", fortuneH)
+	mux.Handle("/fortunes/", fortuneH)
+	mux.HandleFunc("/healthz", healthzHandler)
+
+	err := http.ListenAndServe(":9000", mux)
+	fmt.Println(err)
 }
+
+func healthzHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("healthy"))
 }

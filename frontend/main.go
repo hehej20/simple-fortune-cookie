@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"html/template"
 	"io"
-	"log"
 	"math/rand"
 	"net/http"
 	"time"
@@ -39,8 +38,13 @@ func main() {
 	http.HandleFunc("/api/random", func(w http.ResponseWriter, r *http.Request) {
 		resp, err := myClient.Get(fmt.Sprintf("http://%s:%s/fortunes/random", BACKEND_DNS, BACKEND_PORT))
 		if err != nil {
-			log.Fatalln(err)
-			fmt.Fprint(w, err)
+			http.Error(w, "Backend unavailable. Please try again later", http.StatusServiceUnavailable)
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			http.Error(w, "Backend error", http.StatusBadGateway)
 			return
 		}
 
@@ -54,8 +58,13 @@ func main() {
 	http.HandleFunc("/api/all", func(w http.ResponseWriter, r *http.Request) {
 		resp, err := myClient.Get(fmt.Sprintf("http://%s:%s/fortunes", BACKEND_DNS, BACKEND_PORT))
 		if err != nil {
-			log.Fatalln(err)
-			fmt.Fprint(w, err)
+			http.Error(w, "Backend unavailable. Please try again later", http.StatusServiceUnavailable)
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			http.Error(w, "Backend error", http.StatusBadGateway)
 			return
 		}
 
@@ -65,8 +74,7 @@ func main() {
 		tmpl, err := template.ParseFiles("./templates/fortunes.html")
 
 		if err != nil {
-			log.Fatalln(err)
-			fmt.Fprint(w, err)
+			http.Error(w, "Template Error", http.StatusInternalServerError)
 			return
 		}
 
@@ -87,10 +95,14 @@ func main() {
 		var postUrl = fmt.Sprintf("http://%s:%s/fortunes", BACKEND_DNS, BACKEND_PORT)
 		var jsonStr = []byte(fmt.Sprintf(`{"id": "%d", "message": "%s"}`, rand.Intn(10000), f.Message))
 
-		_, err := myClient.Post(postUrl, "application/json", bytes.NewBuffer(jsonStr))
+		resp, err := myClient.Post(postUrl, "application/json", bytes.NewBuffer(jsonStr))
 		if err != nil {
-			log.Fatalln(err)
-			fmt.Fprint(w, err)
+			http.Error(w, "Backend unavailable. Please try again later", http.StatusServiceUnavailable)
+			return
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			http.Error(w, "Backend error", http.StatusBadGateway)
 			return
 		}
 
