@@ -1,0 +1,66 @@
+name: CI / Deploy
+
+on:
+  pull_request:
+    branches: [ "main" ]
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  pr_check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: List K8s manifest files we plan to apply
+        run: |
+          set -e
+          find backend -maxdepth 2 -type f \( -name "*Deployment*.y*ml" -o -name "*Service*.y*ml" \) -print
+          find frontend -maxdepth 2 -type f \( -name "*Deployment*.y*ml" -o -name "*Service*.y*ml" \) -print
+
+      - name: Validate YAML syntax
+        run: |
+          set -e
+          # installer yq for hurtig yaml-parse (valgfrit men nyttigt)
+          sudo apt-get update -y
+          sudo apt-get install -y jq
+          curl -sL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o yq
+          chmod +x yq && sudo mv yq /usr/local/bin/yq
+          for f in $(find backend frontend -maxdepth 2 -type f \( -name "*Deployment*.y*ml" -o -name "*Service*.y*ml" \)); do
+            echo "Validate: $f"
+            yq '.' "$f" >/dev/null
+          done
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install kubectl (stable)
+        run: |
+          set -euo pipefail
+          curl -sSLo kubectl https://storage.googleapis.com/kubernetes-release/release/$(curl -sS https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/kubectl
+          kubectl version --client
+
+      - name: Write kubeconfig from secret
+        run: echo "${{ secrets.KUBECONFIG }}" | base64 -d > kubeconfig
+
+      - name: Make deploy script executable
+        run: chmod +x scripts/deploy.sh
+
+      - name: Deploy manifests
+        env:
+          KUBECONFIG_PATH: kubeconfig
+          NAMESPACE: sfc            
+        run: ./scripts/deploy.sh
